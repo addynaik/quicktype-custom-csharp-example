@@ -3,35 +3,28 @@
 import * as fs from "fs";
 
 import {
-    quicktype,
     InputData,
-    JSONSchemaInput,
-    CSharpTargetLanguage,
-    cSharpOptions,
-    CSharpRenderer,
-    RenderContext,
-    getOptionValues,
-    Sourcelike,
-    ClassType,
-    Type,
-    TypeAttributeKind,
+    JavaTargetLanguage,
     JSONSchema,
-    Ref,
-    JSONSchemaType,
     JSONSchemaAttributes,
-    ClassProperty,
-    Name
-} from "quicktype-core";
+    JSONSchemaInput,
+    JSONSchemaType,
+    quicktype,
+    Ref,
+    TypeAttributeKind,
+    RenderContext, JavaRenderer, getOptionValues, javaOptions, TargetLanguage, Name, ClassType, ClassProperty
+} from "quicktype/dist/quicktype-core";
+import {OptionValues} from "quicktype/dist/quicktype-core/RendererOptions";
 
 /**
  * This type attribute stores information on types related to our game object domain.
  * Right now the only piece of information we store is whether a class must be a
  * subclass of GameObject, for which we only need a boolean.
  */
-class GameObjectTypeAttributeKind extends TypeAttributeKind<boolean> {
+class DeprecatedTypeAttributeKind extends TypeAttributeKind<boolean> {
     constructor() {
         // This name is used only for debugging purposes.
-        super("gameObject");
+        super("deprecated");
     }
 
     // When two classes are combined, such as in a `oneOf` schema, the resulting
@@ -50,13 +43,13 @@ class GameObjectTypeAttributeKind extends TypeAttributeKind<boolean> {
 
     // For debugging purposes only.  It shows up when quicktype is run with
     // with the `debugPrintGraph` option.
-    stringify(isGameObject: boolean): string {
-        return isGameObject.toString();
+    stringify(isDeprecated: boolean): string {
+        return isDeprecated.toString();
     }
 }
 
 // We need to instantiate the attribute kind class to work with it.
-const gameObjectTypeAttributeKind = new GameObjectTypeAttributeKind();
+const deprecatedTypeAttributeKind = new DeprecatedTypeAttributeKind();
 
 /**
  * This function produces, wherever appropriate, a game object type attribute
@@ -64,96 +57,64 @@ const gameObjectTypeAttributeKind = new GameObjectTypeAttributeKind();
  * `gameObject` property is present in the schema or not (if it's not present,
  * the attribute will be `false`).  If it's present, it must be a boolean.
  */
-function gameObjectAttributeProducer(
+function deprecatedAttributeProducer(
     schema: JSONSchema,
     canonicalRef: Ref,
-    types: Set<JSONSchemaType>
+    _types: Set<JSONSchemaType>
 ): JSONSchemaAttributes | undefined {
     // booleans are valid JSON Schemas, too, but we won't produce our
     // attribute for them.
     if (typeof schema !== "object") return undefined;
 
-    // We only produce this attribute for object types.
-    if (!types.has("object")) return undefined;
-
-    let isGameObject: boolean;
-    if (schema.gameObject === undefined) {
-        isGameObject = false;
-    } else if (typeof schema.gameObject === "boolean") {
-        isGameObject = schema.gameObject;
+    let isDeprecated: boolean;
+    if (schema.deprecated === undefined) {
+        isDeprecated = false;
+    } else if (typeof schema.deprecated === "boolean") {
+        isDeprecated = schema.deprecated;
     } else {
-        throw new Error(`gameObject is not a boolean in ${canonicalRef}`);
+        throw new Error(`deprecated is not a boolean in ${canonicalRef}`);
     }
 
-    return { forType: gameObjectTypeAttributeKind.makeAttributes(isGameObject) };
+    return { forType: deprecatedTypeAttributeKind.makeAttributes(isDeprecated) };
 }
 
-class DefaultValueTypeAttributeKind extends TypeAttributeKind<any> {
-    constructor() {
-        super("propertyDefaults");
-    }
-
-    combine(attrs: any[]): any {
-        const a = attrs[0];
-        for (let i = 1; i < attrs.length; i++) {
-            if (a !== attrs[i]) {
-                throw new Error("Inconsistent default values");
-            }
-        }
-        return a;
-    }
-
-    makeInferred(_: any): undefined {
-        return undefined;
-    }
-
-    stringify(v: any): string {
-        return JSON.stringify(v.toObject());
+export class CustomJava extends JavaTargetLanguage {
+    protected makeRenderer(renderContext: RenderContext, untypedOptionValues: { [name: string]: any }): JavaRenderer {
+        return new CustomizedJavaRenderer(this, renderContext, getOptionValues(javaOptions, untypedOptionValues));
     }
 }
 
-const defaultValueTypeAttributeKind = new DefaultValueTypeAttributeKind();
+export class CustomizedJavaRenderer extends JavaRenderer {
 
-function propertyDefaultsAttributeProducer(schema: JSONSchema): JSONSchemaAttributes | undefined {
-    // booleans are valid JSON Schemas, too, but we won't produce our
-    // attribute for them.
-    if (typeof schema !== "object") return undefined;
-
-    // Don't make an attribute if there's no default property.
-    if (typeof schema.default === undefined) return undefined;
-
-    return { forType: defaultValueTypeAttributeKind.makeAttributes(schema.default) };
-}
-
-class GameCSharpTargetLanguage extends CSharpTargetLanguage {
-    constructor() {
-        super("C#", ["csharp"], "cs");
+    constructor(
+        targetLanguage: TargetLanguage,
+        renderContext: RenderContext,
+        _options: OptionValues<typeof javaOptions>
+    ) {
+        super(targetLanguage, renderContext, _options);
     }
 
-    protected makeRenderer(renderContext: RenderContext, untypedOptionValues: { [name: string]: any }): CSharpRenderer {
-        return new GameCSharpRenderer(this, renderContext, getOptionValues(cSharpOptions, untypedOptionValues));
-    }
-}
-
-class GameCSharpRenderer extends CSharpRenderer {
-    protected superclassForType(t: Type): Sourcelike | undefined {
-        if (!(t instanceof ClassType)) return undefined;
-
-        // All the type's attributes
-        const attributes = t.getAttributes();
-        // The game object attribute, or undefined
-        const isGameObject = gameObjectTypeAttributeKind.tryGetInAttributes(attributes);
-        return isGameObject ? "GameObject" : undefined;
-    }
-
-    protected propertyDefinition(p: ClassProperty, name: Name, c: ClassType, jsonName: string): Sourcelike {
-        const originalDefinition = super.propertyDefinition(p, name, c, jsonName);
-        // The property's type attributes
+    protected emitAccessorAttributes(
+        c: ClassType,
+        className: Name,
+        propertyName: Name,
+        jsonName: string,
+        p: ClassProperty,
+        isSetter: boolean
+    ): void {
         const attributes = p.type.getAttributes();
-        const v = defaultValueTypeAttributeKind.tryGetInAttributes(attributes);
-        // If we don't have a default value, return the original definition
-        if (v === undefined) return originalDefinition;
-        return [originalDefinition, " = ", JSON.stringify(v), ";"];
+        const deprecated = deprecatedTypeAttributeKind.tryGetInAttributes(attributes);
+        if(deprecated) {
+            this.emitLine("@Deprecated");
+        }
+        super.emitAccessorAttributes(
+            c,
+            className,
+            propertyName,
+            jsonName,
+            p,
+            isSetter
+        );
     }
 }
 
@@ -167,10 +128,10 @@ async function main(program: string, args: string[]): Promise<void> {
     const source = { name: "Player", schema: fs.readFileSync(args[0], "utf8") };
 
     // We need to pass the attribute producer to the JSONSchemaInput
-    const producers = [gameObjectAttributeProducer, propertyDefaultsAttributeProducer];
+    const producers = [deprecatedAttributeProducer];
     await inputData.addSource("schema", source, () => new JSONSchemaInput(undefined, producers));
 
-    const lang = new GameCSharpTargetLanguage();
+    const lang = new CustomJava();
 
     const { lines } = await quicktype({ lang, inputData });
 

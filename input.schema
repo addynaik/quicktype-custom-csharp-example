@@ -1,26 +1,39 @@
 {
     "$schema": "http://json-schema.org/draft-06/schema#",
-    "$ref": "#/definitions/Player",
+    "$ref": "#/definitions/player",
     "definitions": {
-        "Player": {
+        "player": {
             "type": "object",
+            "title": "Player",
             "properties": {
-                "name": { "type": "string", "default": "Emmerich" },
-                "position": { "$ref": "#/definitions/Coordinates" },
-                "hitPoints": { "type": "integer", "default": 100 }
-            },
-            "required": ["name", "position", "hitPoints"],
-            "additionalProperties": false,
-            "gameObject": true
+                "userId": {
+                    "type": "integer",
+                    "title": "user ID"
+                },
+                "externalId": {
+                    "type": "string",
+                    "title": "External ID"
+                },
+                "participant": {
+                    "$ref": "#/definitions/participant"
+                }
+            }
         },
-        "Coordinates": {
+        "participant": {
             "type": "object",
+            "title": "Participant",
             "properties": {
-                "x": { "type": "number" },
-                "y": { "type": "number" }
-            },
-            "required": ["x", "y"],
-            "additionalProperties": false
+                "emailAddress": {
+                    "type": "string",
+                    "title": "Email Address",
+                    "deprecated": true
+                },
+                "phoneNumber": {
+                    "type": "string",
+                    "title": "Phone Number",
+                    "deprecated": true
+                }
+            }
         }
     }
 }

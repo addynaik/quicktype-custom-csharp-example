@@ -12,13 +12,13 @@
     },
     "license": "Apache-2.0",
     "devDependencies": {
-        "@types/node": "^10.1.0",
-        "ts-node": "^6.0.3",
-        "typescript": "^2.8.3"
+        "@types/node": "^11.13.4",
+        "ts-node": "^8.0.3",
+        "typescript": "*"
     },
     "dependencies": {
         "collection-utils": "0.0.6",
-        "quicktype-core": "^2.0.2"
+        "quicktype": "^15.0.197"
     },
     "files": [
         "package.json",
